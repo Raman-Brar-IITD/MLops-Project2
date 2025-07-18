@@ -72,7 +72,7 @@ def main():
         # test_size = 0.2
         
 
-        df = load_data(data_url=download_url)
+        
         acesskey=os.getenv("ACKEY")
         secretkey=os.getenv("SCKEY")
         s3 = s3_connection.s3_operations("mlopsproject2", acesskey, secretkey)
