@@ -70,15 +70,14 @@ def main():
         params = load_params(params_path='params.yaml')
         test_size = params['data_ingestion']['test_size']
         # test_size = 0.2
-        # file_id = '1-dSBy_X--LqzmBs_CWY86VHjcMrSjvRo'
-        # download_url = f'https://drive.google.com/uc?export=download&id={file_id}'
+        
 
-        # df = load_data(data_url=download_url)
-        # acesskey=os.getenv("ACKEY")
-        # secretkey=os.getenv("SCKEY")
-        # s3 = s3_connection.s3_operations("mlopsproject2", acesskey, secretkey)
-        # df = s3.fetch_file_from_s3("data.csv")
-        df=pd.read_csv("./notebooks/data.csv")
+        df = load_data(data_url=download_url)
+        acesskey=os.getenv("ACKEY")
+        secretkey=os.getenv("SCKEY")
+        s3 = s3_connection.s3_operations("mlopsproject2", acesskey, secretkey)
+        df = s3.fetch_file_from_s3("data.csv")
+        # df=pd.read_csv("./notebooks/data.csv")
 
 
         final_df = preprocess_data(df)
