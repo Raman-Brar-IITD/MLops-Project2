@@ -73,8 +73,8 @@ def main():
         
 
         
-        acesskey=os.getenv("ACKEY")
-        secretkey=os.getenv("SCKEY")
+        acesskey=os.getenv("AWS_ACCESS_KEY_ID")
+        secretkey=os.getenv("AWS_SECRET_ACCESS_KEY")
         s3 = s3_connection.s3_operations("mlopsproject2", acesskey, secretkey)
         df = s3.fetch_file_from_s3("data.csv")
         # df=pd.read_csv("./notebooks/data.csv")
