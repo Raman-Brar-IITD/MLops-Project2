@@ -11,6 +11,17 @@
             text-align: center;
             padding: 20px;
         }
+        .explanation {
+        margin-top: 30px;
+        padding: 20px;
+        border-radius: 8px;
+        background-color: #f9f9f9;
+        border: 1px solid #ddd;
+        }
+        .explanation h2 {
+            margin-top: 0;
+            color: #333;
+        }
         .container {
             max-width: 500px;
             margin: auto;
@@ -70,7 +81,7 @@
             <label for="text">Write text:</label><br>
             <textarea id="text" name="text" rows="5" placeholder="Enter your text here..."></textarea><br>
             <button type="submit">Predict</button>
-        </form>
+        </form
 
         {% if result is not none %}
             <div class="result {% if result == 1 %}positive{% else %}negative{% endif %}">
@@ -81,6 +92,15 @@
                 {% endif %}
             </div>
         {% endif %}
+    </div>
+    <div class="container">
+    {% if explanation is not none %}
+        <div class="explanation">
+            <h2>Why?</h2>
+            <p>This chart highlights the words that most influenced the model's decision.</p>
+            {{ explanation | safe }}
+        </div>
+    {% endif %}
     </div>
 
 </body>

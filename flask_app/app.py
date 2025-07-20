@@ -8,6 +8,7 @@ import string
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
 import warnings
+from lime.lime_text import LimeTextExplainer
 
 warnings.simplefilter("ignore", UserWarning)
 warnings.filterwarnings("ignore")
@@ -61,17 +62,27 @@ mlflow.set_tracking_uri("https://dagshub.com/Raman-Brar-IITD/MLops-Project2.mlfl
 
 # Load model and vectorizer
 model_name = "my_model"
-def get_latest_model_version(model_name):
+def get_latest_model(model_name):
     client = mlflow.MlflowClient()
     versions = client.get_latest_versions(model_name, stages=["Production"])
     if not versions:
         versions = client.get_latest_versions(model_name, stages=["None"])
-    return versions[0].version if versions else None
+    return versions[0] if versions else None
 
-model_version = get_latest_model_version(model_name)
-model_uri = f'models:/{model_name}/{model_version}'
-model = mlflow.pyfunc.load_model(model_uri)
-vectorizer = pickle.load(open('models/vectorizer.pkl', 'rb'))
+latest_model=get_latest_model(model_name=model_name)
+run_id=latest_model.run_id
+
+vectorizer_path=mlflow.artifacts.download_artifacts(run_id=run_id,artifact_path="vectorizer/vectorizer.pkl",dst_path=".")
+with open(vectorizer_path,"rb") as f:
+    vectorizer=pickle.load(f)
+
+model_uri = f'models:/{model_name}/{latest_model.version}'
+model = mlflow.sklearn.load_model(model_uri)
+vec=mlflow.MlflowClient.download_artifacts
+token_pattern = re.compile(r"(?u)\b\w\w+\b")
+# create lime explianer
+explainer=LimeTextExplainer(class_names=["Negative","Positive"], split_expression=lambda x: token_pattern.findall(x))
+
 
 # Flask app
 app = Flask(__name__)
@@ -82,12 +93,24 @@ def home():
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    text = request.form["text"]
+    text=request.form["text"]
+    def predictor(texts):
+        cleaned_texts = [normalize_text(t) for t in texts]
+        features = vectorizer.transform(cleaned_texts)
+        # The model expects a DataFrame, so we need to create one
+        features_df = pd.DataFrame(features.toarray(), columns=[str(i) for i in range(features.shape[1])])
+        # Return prediction probabilities
+        return model.predict_proba(features_df)
+   
+   
+    explanation=explainer.explain_instance(text,predictor,num_features=10)
+
+
     cleaned_text = normalize_text(text)
     features = vectorizer.transform([cleaned_text])
     features_df = pd.DataFrame(features.toarray(), columns=[str(i) for i in range(features.shape[1])])
     prediction = model.predict(features_df)[0]
-    return render_template("index.html", result=prediction)
+    return render_template("index.html", result=prediction,explanation=explanation.as_html())
 
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)

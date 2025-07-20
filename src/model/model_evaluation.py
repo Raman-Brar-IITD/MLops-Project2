@@ -111,6 +111,7 @@ def main():
             
             # Log the metrics file to MLflow
             mlflow.log_artifact('reports/metrics.json')
+            mlflow.log_artifact("models/vectorizer.pkl",artifact_path="vectorizer")
 
         except Exception as e:
             logging.error('Failed to complete the model evaluation process: %s', e)

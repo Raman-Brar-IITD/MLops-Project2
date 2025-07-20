@@ -1,4 +1,6 @@
 [core]
     remote = myremote
+[cache]
+    type = copy
 ['remote "myremote"']
     url = s3://mlopsproject2
