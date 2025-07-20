@@ -50,17 +50,6 @@ jobs:
         run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
 
-  # JOB 2: Push the same Docker image to Hugging Face
-  deploy-to-huggingface:
-    needs: build-and-push-to-ecr
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Build Image Again
-        run: docker build -t ${{ secrets.ECR_REPOSITORY }}:latest .
-
       - name: Login to Hugging Face Container Registry
         uses: docker/login-action@v2
         with:
