@@ -54,7 +54,7 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: hf.co
-          username: ${{ secrets.HF_USERNAME }}
+          username: __token__
           password: ${{ secrets.HF_TOKEN }}
 
       - name: Tag and Push to Hugging Face Registry
