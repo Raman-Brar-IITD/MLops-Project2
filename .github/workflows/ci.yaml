@@ -88,7 +88,7 @@ jobs:
           cp Dockerfile space_repo/
           cp requirements.txt space_repo/
           mkdir -p space_repo/flask_app && cp -r flask_app/* space_repo/flask_app/
-          mkdir -p space_repo/models && cp models/vectorizer.pkl space_repo/models/
+          mkdir -p space_repo/models
 
           cd space_repo
           git add .
