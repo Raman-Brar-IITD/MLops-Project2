@@ -28,6 +28,9 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install dvc[s3]
+          python -m nltk.downloader punkt averaged_perceptron_tagger stopwords wordnet omw-1.4
+        
+
 
       - name: Run DVC & Tests
         env:
@@ -37,10 +40,6 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           dvc repro
-
-      - name: Download NLTK Data and run tests
-        run: |
-          python -m nltk.downloader punkt averaged_perceptron_tagger stopwords wordnet omw-1.4
           python -m unittest discover -s tests -p "*.py"
 
       - name: Configure AWS Credentials
