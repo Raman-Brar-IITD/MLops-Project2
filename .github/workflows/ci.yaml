@@ -5,22 +5,32 @@ on:
     branches:
       - main
 
-jobs:
-  # JOB 1: Test the code and push the image to AWS ECR
-  build-and-push-to-ecr:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+permissions:
+  contents: write
 
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repository
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Setup Python
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+          cache: 'pip'
 
+      # Install dependencies
       - name: Install Dependencies
-        run: pip install -r requirements.txt && pip install dvc[s3]
+        run: |
+          pip install -r requirements.txt
+          pip install dvc[s3]
 
+      # Run DVC and tests
       - name: Run DVC Pipeline and Tests
         env:
           CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
@@ -29,42 +39,49 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           dvc repro
-          python -m unittest tests/test_model.py
-          python -m unittest tests/test_flask_app.py
+          python -m unittest discover -s tests -p "*.py"
 
-      - name: Login to AWS ECR
-        uses: aws-actions/configure-aws-credentials@v1
+      # Configure AWS credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
-      - run: |
-          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
+      # Login to ECR
+      - name: Login to AWS ECR
+        run: |
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} \
+          | docker login --username AWS --password-stdin \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+      # Build and tag Docker image
       - name: Build and Tag Docker Image
         run: |
           docker build -t ${{ secrets.ECR_REPOSITORY }}:latest .
-          docker tag ${{ secrets.ECR_REPOSITORY }}:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+          docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
 
+      # Push Docker image to ECR
       - name: Push Docker Image to ECR
         run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
 
-
+      # Push to Hugging Face Space
       - name: Push to Hugging Face Space (Docker)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           git config --global user.email "gitAction@raman.com"
           git config --global user.name "Raman-GitAction"
+          git lfs install --skip-smudge
 
-          git lfs install
-
-          # Clone your Hugging Face Space repo (Docker template)
+          # Clone Space
           git clone https://huggingface.co/spaces/RamanSinghIITD/Sentiment-Analysis space_repo
 
-          # Copy all project files (Dockerfile, app, etc.)
-          cp -r ./* space_repo/
+          # Copy project files excluding Git history
+          rsync -av --exclude='.git' --exclude='.github' ./ space_repo/
 
           cd space_repo
           git add .
