@@ -10,13 +10,11 @@ from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
 import warnings
 from lime.lime_text import LimeTextExplainer
-nltk.download('punkt')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('stopwords')
-nltk.download('wordnet')
-nltk.download('omw-1.4')
-nltk.download('wordnet')
-nltk.download('stopwords')
+nltk.data.find("tokenizers/punkt")                          
+nltk.data.find("taggers/averaged_perceptron_tagger")       
+nltk.data.find("corpora/stopwords")                        
+nltk.data.find("corpora/wordnet")                          
+nltk.data.find("corpora/omw-1.4")
 
 warnings.simplefilter("ignore", UserWarning)
 warnings.filterwarnings("ignore")
