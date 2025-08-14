@@ -2,6 +2,8 @@ FROM python:3.10-slim
 WORKDIR /app
 COPY flask_app/ /app/
 RUN pip install -r requirements.txt
+ARG CAPSTONE_TEST
+ENV CAPSTONE_TEST=$CAPSTONE_TEST
 RUN python downloader.py
 
 EXPOSE 5000
