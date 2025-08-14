@@ -1,122 +1,122 @@
-from flask import Flask, render_template, request
-import mlflow
-import pickle
 import os
-import pandas as pd
+import pickle
 import re
-import nltk
 import string
-from nltk.stem import WordNetLemmatizer
-from nltk.corpus import stopwords
 import warnings
-from lime.lime_text import LimeTextExplainer
-nltk.data.find("tokenizers/punkt")                          
-nltk.data.find("taggers/averaged_perceptron_tagger")       
-nltk.data.find("corpora/stopwords")                        
-nltk.data.find("corpora/wordnet")                          
-nltk.data.find("corpora/omw-1.4")
 
-warnings.simplefilter("ignore", UserWarning)
+import flask
+import mlflow.sklearn
+import nltk
+from lime.lime_text import LimeTextExplainer
+from nltk.corpus import stopwords
+from nltk.stem import WordNetLemmatizer
+
+# --- Initial Setup & Configuration ---
+
+# Suppress warnings for a cleaner console output
+warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore")
 
-# Text preprocessing functions
-def lemmatization(text):
-    lemmatizer = WordNetLemmatizer()
-    return " ".join([lemmatizer.lemmatize(word) for word in text.split()])
+# --- Asset Loading ---
 
-def remove_stop_words(text):
-    stop_words = set(stopwords.words("english"))
-    return " ".join([word for word in text.split() if word not in stop_words])
+ASSETS_DIR = "assets"
+NLTK_DATA_DIR = os.path.join(ASSETS_DIR, "nltk_data")
+MODEL_DIR = os.path.join(ASSETS_DIR, "model")
+VECTORIZER_PATH = os.path.join(MODEL_DIR, "vectorizer", "vectorizer.pkl")
+MODEL_PATH = os.path.join(MODEL_DIR, "sklearn_model")
 
-def removing_numbers(text):
-    return ''.join([char for char in text if not char.isdigit()])
+# Point NLTK to the local data directory
+nltk.data.path.append(NLTK_DATA_DIR)
 
-def lower_case(text):
-    return " ".join([word.lower() for word in text.split()])
+# --- Text Preprocessing Functions ---
 
-def removing_punctuations(text):
-    text = re.sub(f"[{re.escape(string.punctuation)}]", ' ', text)
-    text = re.sub(r'\s+', ' ', text).strip()
+# Load NLTK resources from the local path
+LEMMATIZER = WordNetLemmatizer()
+STOP_WORDS = set(stopwords.words("english"))
+PUNCTUATION_REGEX = re.compile(f"[{re.escape(string.punctuation)}]")
+URL_REGEX = re.compile(r"https?://\S+|www\.\S+")
+WHITESPACE_REGEX = re.compile(r"\s+")
+
+def normalize_text(text: str) -> str:
+    """
+    Applies a series of text normalization steps using pre-loaded resources.
+    """
+    text = text.lower()
+    text = URL_REGEX.sub("", text)
+    text = PUNCTUATION_REGEX.sub(" ", text)
+    text = "".join([char for char in text if not char.isdigit()])
+    text = " ".join([word for word in text.split() if word not in STOP_WORDS])
+    text = " ".join([LEMMATIZER.lemmatize(word) for word in text.split()])
+    text = WHITESPACE_REGEX.sub(" ", text).strip()
     return text
 
-def removing_urls(text):
-    return re.sub(r'https?://\S+|www\.\S+', '', text)
+# --- LIME Explainer Setup ---
 
-def normalize_text(text):
-    text = lower_case(text)
-    text = remove_stop_words(text)
-    text = removing_numbers(text)
-    text = removing_punctuations(text)
-    text = removing_urls(text)
-    text = lemmatization(text)
-    return text
-
-# Setup MLflow for model loading
-dagshub_token = os.getenv("CAPSTONE_TEST")
-if not dagshub_token:
-    raise EnvironmentError("CAPSTONE_TEST environment variable is not set")
-
-os.environ["MLFLOW_TRACKING_USERNAME"] = dagshub_token
-os.environ["MLFLOW_TRACKING_PASSWORD"] = dagshub_token
-
-
-
-
-    # Set up MLflow tracking URI
-mlflow.set_tracking_uri("https://dagshub.com/Raman-Brar-IITD/MLops-Project2.mlflow")
-
-
-# Load model and vectorizer
-model_name = "my_model"
-def get_latest_model(model_name):
-    client = mlflow.MlflowClient()
-    versions = client.get_latest_versions(model_name, stages=["Production"])
-    if not versions:
-        versions = client.get_latest_versions(model_name, stages=["None"])
-    return versions[0] if versions else None
-
-latest_model=get_latest_model(model_name=model_name)
-run_id=latest_model.run_id
-
-vectorizer_path=mlflow.artifacts.download_artifacts(run_id=run_id,artifact_path="vectorizer/vectorizer.pkl",dst_path=".")
-with open(vectorizer_path,"rb") as f:
-    vectorizer=pickle.load(f)
-
-model_uri = f'models:/{model_name}/{latest_model.version}'
-model = mlflow.sklearn.load_model(model_uri)
-vec=mlflow.MlflowClient.download_artifacts
-token_pattern = re.compile(r"(?u)\b\w\w+\b")
-# create lime explianer
-explainer=LimeTextExplainer(class_names=["Negative","Positive"], split_expression=lambda x: token_pattern.findall(x))
-
-
-# Flask app
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return render_template("index.html", result=None)
-
-@app.route("/predict", methods=["POST"])
-def predict():
-    text=request.form["text"]
+def create_predictor_for_lime(model, vectorizer):
+    """
+    Creates a prediction function compatible with LIME's TextExplainer.
+    """
     def predictor(texts):
         cleaned_texts = [normalize_text(t) for t in texts]
         features = vectorizer.transform(cleaned_texts)
-        # The model expects a DataFrame, so we need to create one
-        features_df = pd.DataFrame(features.toarray(), columns=[str(i) for i in range(features.shape[1])])
-        # Return prediction probabilities
-        return model.predict_proba(features_df)
-   
-   
-    explanation=explainer.explain_instance(text,predictor,num_features=10)
+        return model.predict_proba(features)
+    return predictor
 
+# --- Flask Application ---
 
+app = flask.Flask(__name__)
+
+# Load model and vectorizer once from local files when the app starts
+print("Loading local assets...")
+with open(VECTORIZER_PATH, "rb") as f:
+    VECTORIZER = pickle.load(f)
+print("Vectorizer loaded successfully.")
+
+MODEL = mlflow.sklearn.load_model(MODEL_PATH)
+print("Model loaded successfully.")
+
+# Create the LIME explainer
+TOKEN_PATTERN = re.compile(r"(?u)\b\w\w+\b")
+EXPLAINER = LimeTextExplainer(
+    class_names=["Negative", "Positive"],
+    split_expression=lambda x: TOKEN_PATTERN.findall(x)
+)
+LIME_PREDICTOR = create_predictor_for_lime(MODEL, VECTORIZER)
+print("LIME explainer created.")
+
+@app.route("/")
+def home():
+    """Renders the main page."""
+    return flask.render_template("index.html", result=None, explanation=None)
+
+@app.route("/predict", methods=["POST"])
+def predict():
+    """
+    Handles the prediction request using the pre-loaded model.
+    """
+    text = flask.request.form.get("text", "").strip()
+    
+    if not text:
+        return flask.render_template("index.html", result="empty", explanation=None)
+
+    # Generate the explanation
+    explanation = EXPLAINER.explain_instance(
+        text, LIME_PREDICTOR, num_features=10
+    )
+    
+    # Get the final prediction
     cleaned_text = normalize_text(text)
-    features = vectorizer.transform([cleaned_text])
-    features_df = pd.DataFrame(features.toarray(), columns=[str(i) for i in range(features.shape[1])])
-    prediction = model.predict(features_df)[0]
-    return render_template("index.html", result=prediction,explanation=explanation.as_html())
+    features = VECTORIZER.transform([cleaned_text])
+    prediction_code = MODEL.predict(features)[0]
+    prediction_label = "Positive" if prediction_code == 1 else "Negative"
+
+    return flask.render_template(
+        "index.html",
+        text=text,
+        result=prediction_label,
+        explanation=explanation.as_html()
+    )
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=False, host="0.0.0.0", port=5000)
+
