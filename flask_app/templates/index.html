@@ -81,11 +81,11 @@
             <label for="text">Write text:</label><br>
             <textarea id="text" name="text" rows="5" placeholder="Enter your text here..."></textarea><br>
             <button type="submit">Predict</button>
-        </form
+        </form>
 
         {% if result is not none %}
-            <div class="result {% if result == 1 %}positive{% else %}negative{% endif %}">
-                {% if result == 1 %}
+            <div class="result {% if result == 'Positive' %}positive{% else %}negative{% endif %}">
+                {% if result == 'Positive' %}
                     😊 Positive Sentiment
                 {% else %}
                     😞 Negative Sentiment
