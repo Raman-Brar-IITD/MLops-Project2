@@ -53,6 +53,8 @@ jobs:
           ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
       - name: Build & Tag Docker Image
+        env:
+          CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
         run: |
           docker build --build-arg CAPSTONE_TEST=$CAPSTONE_TEST -t ${{ secrets.ECR_REPOSITORY }}:latest .
           docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
