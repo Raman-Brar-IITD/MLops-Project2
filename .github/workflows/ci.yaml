@@ -8,7 +8,10 @@ permissions:
   contents: write
 
 jobs:
-  build-and-push:
+  # --------------------------
+  # JOB 1: Build & Push Docker Image to AWS ECR
+  # --------------------------
+  build-and-push-ecr:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,45 +34,65 @@ jobs:
           CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
+          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
           dvc repro
           python -m unittest discover -s tests -p "*.py"
 
-      # AWS login
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Login to AWS ECR
+      - name: Login to ECR
         run: |
-          aws ecr get-login-password --region us-east-1 | \
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | \
           docker login --username AWS --password-stdin \
-          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
-      # Hugging Face login
-      - name: Login to Hugging Face Docker Registry
-        run: |
-          echo "${{ secrets.HF_TOKEN }}" | docker login -u "RamanSinghIITD" --password-stdin registry.huggingface.co
-
-      # Build once, push to both
-      - name: Build & Push Docker Images
+      - name: Build & Tag Docker Image
         env:
           CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
         run: |
-          IMAGE_NAME=${{ secrets.ECR_REPOSITORY }}
-          AWS_IMAGE=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/$IMAGE_NAME:latest
-          HF_IMAGE=registry.huggingface.co/ramansinghiitd/sentiment-analysis:latest
+          docker build --build-arg CAPSTONE_TEST=$CAPSTONE_TEST -t ${{ secrets.ECR_REPOSITORY }}:latest .
+          docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
 
-          docker build --build-arg CAPSTONE_TEST=$CAPSTONE_TEST -t $IMAGE_NAME:latest .
-          
-          # Tag for AWS ECR
-          docker tag $IMAGE_NAME:latest $AWS_IMAGE
-          docker push $AWS_IMAGE
-          
-          # Tag for Hugging Face
-          docker tag $IMAGE_NAME:latest $HF_IMAGE
-          docker push $HF_IMAGE
+      - name: Push Image to ECR
+        run: |
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
+
+  # --------------------------
+  # JOB 2: Push Minimal Context to Hugging Face Space
+  # --------------------------
+  push-to-huggingface:
+    runs-on: ubuntu-latest
+    needs: build-and-push-ecr
+
+    steps:
+      - uses: actions/checkout@v4
+        name: Checkout Code
+
+      - name: Push to Hugging Face Space (Docker)
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git config --global user.email "gitAction@raman.com"
+          git config --global user.name "Raman-GitAction"
+          git lfs install --skip-smudge
+
+          # Clone Hugging Face Space
+          git clone https://user:$HF_TOKEN@huggingface.co/spaces/RamanSinghIITD/Sentiment-Analysis space_repo
+
+          # Copy only necessary files for Docker build
+          cp Dockerfile space_repo/
+          cp requirements.txt space_repo/
+          mkdir -p space_repo/flask_app && cp -r flask_app/* space_repo/flask_app/
+          mkdir -p space_repo/models
+
+          cd space_repo
+          git add .
+          git commit -m "Update Docker build context from GitHub Actions" || echo "No changes to commit"
+          git push https://user:$HF_TOKEN@huggingface.co/spaces/RamanSinghIITD/Sentiment-Analysis main
