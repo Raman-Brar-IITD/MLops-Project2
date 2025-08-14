@@ -25,6 +25,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          # We still use the main requirements file here for the DVC steps
           pip install -r requirements.txt
           pip install dvc[s3]
 
@@ -34,9 +35,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         run: |
-          echo "--- Running DVC to pull data and models ---"
           dvc repro
-          echo "--- Running downloader script to fetch MLflow/NLTK assets ---"
           python flask_app/downloader.py
 
       - name: Configure AWS Credentials
@@ -54,6 +53,8 @@ jobs:
 
       - name: Build & Push Docker Image to ECR
         run: |
+          # Temporarily use the correct requirements for the ECR build
+          cp flask_app/requirements.txt ./requirements.txt
           docker build -t ${{ secrets.ECR_REPOSITORY }}:latest .
           docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
           ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
@@ -65,7 +66,7 @@ jobs:
           name: huggingface-assets
           path: |
             Dockerfile
-            requirements.txt
+            flask_app/requirements.txt
             flask_app/
             assets/
 
@@ -74,13 +75,13 @@ jobs:
   # --------------------------
   push-to-huggingface:
     runs-on: ubuntu-latest
-    needs: build # This job runs only after the 'build' job succeeds
+    needs: build
     steps:
       - name: Download assets from build job
         uses: actions/download-artifact@v4
         with:
           name: huggingface-assets
-          path: . # Download to the root of the workspace
+          path: .
 
       - name: Push to Hugging Face Space
         env:
@@ -89,11 +90,12 @@ jobs:
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
 
-          # Clone Hugging Face Space
           git clone https://user:$HF_TOKEN@huggingface.co/spaces/RamanSinghIITD/Sentiment-Analysis space_repo
 
           # Copy the downloaded artifacts into the repository
-          cp -r Dockerfile requirements.txt flask_app/ assets/ space_repo/
+          # Crucially, copy the app's requirements.txt and rename it for the Docker build
+          cp -r Dockerfile flask_app/ assets/ space_repo/
+          cp flask_app/requirements.txt space_repo/requirements.txt
 
           cd space_repo
           git lfs install
