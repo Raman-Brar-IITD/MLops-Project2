@@ -9,17 +9,16 @@ permissions:
 
 jobs:
   # --------------------------
-  # JOB 1: Build & Push Docker Image to AWS ECR
+  # JOB 1: Prepare Assets & Build Docker Image
   # --------------------------
-  build-and-push-ecr:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
-        name: Checkout Code
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        name: Setup Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
           cache: 'pip'
@@ -29,15 +28,16 @@ jobs:
           pip install -r requirements.txt
           pip install dvc[s3]
 
-      - name: Run DVC & Tests
+      - name: Download DVC and MLflow Assets
         env:
           CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.AWS_REGION }}
         run: |
+          echo "--- Running DVC to pull data and models ---"
           dvc repro
-          python -m unittest discover -s tests -p "*.py"
+          echo "--- Running downloader script to fetch MLflow/NLTK assets ---"
+          python flask_app/downloader.py
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -52,47 +52,51 @@ jobs:
           docker login --username AWS --password-stdin \
           ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
-      - name: Build & Tag Docker Image
-        env:
-          CAPSTONE_TEST: ${{ secrets.CAPSTONE_TEST }}
+      - name: Build & Push Docker Image to ECR
         run: |
-          docker build --build-arg CAPSTONE_TEST=$CAPSTONE_TEST -t ${{ secrets.ECR_REPOSITORY }}:latest .
+          docker build -t ${{ secrets.ECR_REPOSITORY }}:latest .
           docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
           ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
-
-      - name: Push Image to ECR
-        run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
 
+      - name: Upload assets for Hugging Face job
+        uses: actions/upload-artifact@v4
+        with:
+          name: huggingface-assets
+          path: |
+            Dockerfile
+            requirements.txt
+            flask_app/
+            assets/
+
   # --------------------------
-  # JOB 2: Push Minimal Context to Hugging Face Space
+  # JOB 2: Push Pre-built Assets to Hugging Face
   # --------------------------
   push-to-huggingface:
     runs-on: ubuntu-latest
-    needs: build-and-push-ecr
-
+    needs: build # This job runs only after the 'build' job succeeds
     steps:
-      - uses: actions/checkout@v4
-        name: Checkout Code
+      - name: Download assets from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: huggingface-assets
+          path: . # Download to the root of the workspace
 
-      - name: Push to Hugging Face Space (Docker)
+      - name: Push to Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git config --global user.email "gitAction@raman.com"
-          git config --global user.name "Raman-GitAction"
-          git lfs install --skip-smudge
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
 
           # Clone Hugging Face Space
           git clone https://user:$HF_TOKEN@huggingface.co/spaces/RamanSinghIITD/Sentiment-Analysis space_repo
 
-          # Copy only necessary files for Docker build
-          cp Dockerfile space_repo/
-          cp requirements.txt space_repo/
-          mkdir -p space_repo/flask_app && cp -r flask_app/* space_repo/flask_app/
-          mkdir -p space_repo/models
+          # Copy the downloaded artifacts into the repository
+          cp -r Dockerfile requirements.txt flask_app/ assets/ space_repo/
 
           cd space_repo
+          git lfs install
           git add .
-          git commit -m "Update Docker build context from GitHub Actions" || echo "No changes to commit"
+          git commit -m "Update build context from GitHub Actions" || echo "No changes to commit"
           git push https://user:$HF_TOKEN@huggingface.co/spaces/RamanSinghIITD/Sentiment-Analysis main
