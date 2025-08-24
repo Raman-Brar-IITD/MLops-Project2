@@ -3,7 +3,10 @@
 A complete MLOps pipeline for training, deploying, and monitoring a sentiment analysis model. This project is designed to showcase a practical, real-world example of MLOps best practices, making it an ideal portfolio piece for attracting recruiters.
 
 -----
+## Data Pipeline
+<img width="1710" height="611" alt="image" src="https://github.com/user-attachments/assets/34cee06b-b21a-490a-a97e-ef6cd034b408" />
 
+-----
 ## Overview 📖
 
 This project demonstrates a full-cycle MLOps workflow for a sentiment analysis task. It includes everything from data ingestion and preprocessing to model training, evaluation, and deployment as a web application. The entire process is automated using **DVC for data versioning** and a **CI/CD pipeline with GitHub Actions** for continuous integration and deployment to **AWS ECR and Hugging Face Spaces**.
